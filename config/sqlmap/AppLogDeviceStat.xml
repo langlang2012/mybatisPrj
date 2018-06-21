@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!-- namespace命名空间，作用就是对sql进行分类化管理，理解sql隔离
+注意：使用mapper代理方法开发，namespace有特殊重要的作用
+-->
+<mapper namespace="deviceStat">
+
+    <!-- 在 映射文件中配置很多sql语句 -->
+    <!-- 需求：通过id查询用户表的记录 -->
+    <!-- 通过 select执行数据库查询
+    id：标识 映射文件中的 sql
+    将sql语句封装到mappedStatement对象中，所以将id称为statement的id
+    parameterType：指定输入 参数的类型，这里指定int型
+    #{}表示一个占位符号
+    #{id}：其中的id表示接收输入 的参数，参数名称就是id，如果输入 参数是简单类型，#{}中的参数名可以任意，可以value或其它名称
+
+    resultType：指定sql输出结果 的所映射的java对象类型，select指定resultType表示将单条记录映射成的java对象。
+     -->
+    <select id="selectByDay" parameterType="Map" resultType="AppLogDeviceStat">
+        SELECT * FROM stat.app_log_device_stat WHERE deleted=0 and day >=#{startDay} AND day &lt;=#{endDay}
+    </select>
+
+    <insert id="insert" parameterType="String">
+        insert into stat.app_log_device_stat(day,total,new_devices,launch_devices,launch_times,silent_devices,sleep_devices,lost_devices,create_time,create_by)
+        select * FROM
+        (select #{day} day) a0,
+        (
+        <!--1）全部安装： 所有设备总量-->
+        select count(distinct device_id) total from stat.app_log where deleted=0 and create_date&lt;=#{day}
+        )a,
+        (
+        <!--#2）每日新增安装： 统计每日上报的新设备-->
+        select count(distinct device_id) new_devices from stat.app_log where deleted=0 and create_date =  #{day} and device_id not in(select device_id from stat.app_log where deleted=0 and create_date &lt; #{day})
+        )b,
+        (
+        <!--#3）每日启动设备：每日新老设备启动个数-->
+        select count(distinct device_id) launch_devices from stat.app_log where deleted=0  and create_date =  #{day} ;
+        )c,
+        (
+        <!--#4）每日设备启动：每日新老设备启动次数-->
+        select count(device_id) launch_times from stat.app_log where deleted=0 and create_date =  #{day} ;
+        )d,
+        (
+        <!--#5）每日沉默设备： 30天内未启动过的设备个数-->
+        select count(distinct device_id) silent_devices from stat.app_log where deleted=0 and create_date &lt;=#{day} and device_id not in( select device_id from stat.app_log where deleted=0 and create_date >=  ADDDATE(#{day},-30))
+        )e,
+        (
+        <!--#      每日沉睡设备：一个月内没用过的，但上个月内用过的设备个数-->
+        SELECT  count(DISTINCT device_id) sleep_devices FROM stat.app_log
+        WHERE deleted = 0 AND create_date >= ADDDATE(#{day} ,- 60) AND create_date &lt; ADDDATE(#{day} ,- 30)
+        AND device_id NOT IN (SELECT device_id FROM stat.app_log WHERE deleted = 0 AND create_date >= ADDDATE(#{day} ,- 30))
+        )f,
+        (
+        <!--#      每日流失设备：60天内未启动过的设备个数-->
+        select count(distinct device_id) lost_devices from stat.app_log where deleted=0 and create_date &lt;=#{day} and device_id not in( select device_id from stat.app_log where deleted=0 and create_date >=  ADDDATE(#{day},-60))
+        )g,
+        (select UNIX_TIMESTAMP() create_time, 'stat' create_by )z
+    </insert>
+
+    <update id="update" parameterType="AppLogDeviceStat">
+        update stat.app_log_device_stat
+        set total=#{total},new_devices=#{new_devices},launch_devices=#{launch_devices},launch_times=#{launch_times},silent_devices=#{silent_devices},sleep_devices=#{sleep_devices},lost_devices=#{lost_devices},create_time=#{create_time},create_by=#{create_by},deleted=#{deleted}
+        WHERE day=#{day}
+    </update>
+
+    <delete id="deleteByDay" parameterType="String">
+        <!-- DELETE FROM stat.app_log_device_stat WHERE day = #{day} -->
+        UPDATE stat.app_log_device_stat SET deleted = 1 WHERE day = #{day}
+    </delete>
+
+
+</mapper>

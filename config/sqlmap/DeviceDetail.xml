@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!-- namespace命名空间，作用就是对sql进行分类化管理，理解sql隔离
+注意：使用mapper代理方法开发，namespace有特殊重要的作用
+-->
+<mapper namespace="deviceDetail">
+
+    <sql id="selectDeviceColumnsFromAppLog">
+        select device_id, model, os, os_sdk, city_code, ch,MIN(create_time) create_time, MAX(create_time) active_time
+        from stat.app_log where deleted=0
+    </sql>
+    <sql id="groupByDevice">group by device_id order by create_time desc</sql>
+    <!-- 在 映射文件中配置很多sql语句 -->
+    <!-- 需求：通过id查询用户表的记录 -->
+    <!-- 通过 select执行数据库查询
+    id：标识 映射文件中的 sql
+    将sql语句封装到mappedStatement对象中，所以将id称为statement的id
+    parameterType：指定输入 参数的类型，这里指定int型
+    #{}表示一个占位符号
+    #{id}：其中的id表示接收输入 的参数，参数名称就是id，如果输入 参数是简单类型，#{}中的参数名可以任意，可以value或其它名称
+
+    resultType：指定sql输出结果 的所映射的java对象类型，select指定resultType表示将单条记录映射成的java对象。
+     -->
+
+    <!-- 查询直到某一天为止的全部设备-->
+    <select id="getAllUntilDay" parameterType="Map" resultType="AppLog">
+        <include refid="selectDeviceColumnsFromAppLog"/>
+        and create_date&lt;=#{day}
+        <include refid="groupByDevice"/>
+    </select>
+
+    <!-- 查询时间段内的新增设备-->
+    <select id="getNewBetweenDay" parameterType="Map" resultType="AppLog">
+        <include refid="selectDeviceColumnsFromAppLog"/>
+        and create_date >= #{startDay} and create_date &lt;=#{endDay}
+        and device_id not in(select device_id from stat.app_log where deleted=0 and create_date &lt; #{startDay})
+        <include refid="groupByDevice"/>
+    </select>
+
+    <!-- 查询时间段内的启动设备个数-->
+    <select id="getDevicesBetweenDay" parameterType="Map" resultType="AppLog">
+        <include refid="selectDeviceColumnsFromAppLog"/>
+        and create_date >= #{startDay} and create_date &lt;=#{endDay}
+        <include refid="groupByDevice"/>
+    </select>
+
+    <!-- 查询时间段内的设备启动次数-->
+    <select id="getTimesBetweenDay" parameterType="Map" resultType="AppLog">
+        select device_id, model, os, os_sdk, city_code, ch, create_time
+        from stat.app_log where deleted=0
+        and create_date >= #{startDay} and create_date &lt;=#{endDay}
+        order by create_time desc
+    </select>
+
+    <!-- 查询每日沉默设备： 30天内未启动过的设备个数-->
+    <select id="getSilentsByDay" parameterType="Map" resultType="AppLog">
+        <include refid="selectDeviceColumnsFromAppLog"/>
+        and create_date &lt;=#{day}
+        and device_id not in( select device_id from stat.app_log where deleted=0 and create_date >=  ADDDATE(#{day},-30))
+        <include refid="groupByDevice"/>
+    </select>
+
+    <!-- 查询每日沉睡设备：一个月内没用过的，但上个月内用过的设备个数-->
+    <select id="getSleepsByDay" parameterType="Map" resultType="AppLog">
+        <include refid="selectDeviceColumnsFromAppLog"/>
+        AND create_date >= ADDDATE(#{day} ,- 60) AND create_date &lt; ADDDATE(#{day} ,- 30)
+        AND device_id NOT IN (SELECT device_id FROM stat.app_log WHERE deleted = 0 AND create_date >= ADDDATE(#{day} ,- 30))
+        <include refid="groupByDevice"/>
+    </select>
+
+    <!-- 查询每日流失设备：60天内未启动过的设备个数-->
+    <select id="getLostByDay" parameterType="Map" resultType="AppLog">
+        <include refid="selectDeviceColumnsFromAppLog"/>
+        and create_date &lt;=#{day}
+        and device_id not in( select device_id from stat.app_log where deleted=0 and create_date >=  ADDDATE(#{day},-60))
+        <include refid="groupByDevice"/>
+    </select>
+
+</mapper>
